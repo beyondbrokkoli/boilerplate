@@ -44,7 +44,7 @@ local function compile_engine(platform)
 
     -- [1/4] Generate the Single Source of Truth
     print("\n[1/4] Generating C Header SSoT from Boilerplate...")
-    local gen_cmd = 'luajit -e "require(\'registry_export\').generate(\'registry.glsl\', \'shared_structs.h\')"'
+    local gen_cmd = 'luajit -e "package.path='./lua/?.lua;'..package.path; require(\'registry_export\').generate(\'registry.glsl\', \'shared_structs.h\')"'
     if not run_cmd(gen_cmd) then
         print("ERROR: Failed to generate SSoT files!")
         os.exit(1)

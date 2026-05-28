@@ -1,3 +1,4 @@
+package.path = "./lua/?.lua;" .. package.path
 local ffi = require("ffi")
 local math = require("math")
 
