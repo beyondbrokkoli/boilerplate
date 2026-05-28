@@ -15,11 +15,11 @@ local bp = {
     cfg = { use_validation = 1, vk_api_version = 4206592, pcount = 1000000, grid_cells = 262144, pc_size = 128, frame_slots = 10, swap_slots = 10, swarm_states = 7 },
 
     mode = { dual = 0, geom = 1, points = 2, point_cloud_pass = 88 },
-    -- [MISSING DATA ADDED BACK FOR SHADER_GEN]
+
     mode = { dual = 0, geom = 1, points = 2, point_cloud_pass = 88 },
 
     vk_queue = { graphics = 1, compute = 2, transfer = 4 },
-    -- Replace your truncated vk_struct with the full one:
+
     vk_struct = {
         app_info                             = 0,
         instance_create                      = 1,
@@ -62,7 +62,7 @@ local bp = {
         present_info                         = 1000001001,
     },
 
-    -- MISSING VOCABULARY NEEDED BY SWAPCHAIN.LUA
+
     vk_result = {
         success           = 0,
         error_out_of_date = -1000000001,
@@ -92,7 +92,7 @@ local bp = {
         composite_alpha_opaque     = 1,
         present_mode_fifo          = 2,
     },
-    -- MISSING VOCABULARY NEEDED BY GRAPHICS_PIPELINE.LUA
+
     vk_state = {
         cull_none  = 0, front_ccw = 0,
         topo_point = 0, topo_tri  = 3,
@@ -119,7 +119,7 @@ local bp = {
         depth_write_ext      = 1000267007,
         depth_compare_op_ext = 1000267008,
     },
-    -- MISSING VOCABULARY NEEDED BY DESCRIPTORS.LUA
+
     vk_shader_stage = { vert = 1, frag = 16, comp = 32 },
     vk_desc = { ssbo = 7 },
 
@@ -349,7 +349,7 @@ bp.sequence = {
             end
         end
     },
-    -- NEW INJECTIONS: SWAPCHAIN & DESCRIPTORS
+
     {
         name = "Swapchain Initialization",
         action = function(ctx, r)
