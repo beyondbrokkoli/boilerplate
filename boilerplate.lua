@@ -238,7 +238,16 @@ local bp = {
     memory_arenas = {
         { name = "MASTER_INDEX_BLOCK", cdef_type = "uint32_t", count = 3000000, usage = bit.bor(64, 256) },
         { name = "MASTER_GPU_BLOCK", cdef_type = "uint8_t", count = 142606336, usage = bit.bor(32, 128, 256) }
-    }
+    },
+
+    compute_pipelines = {
+        { name = "clear",      file = "clear_comp.spv" },
+        { name = "hash",       file = "hash_comp.spv" },
+        { name = "scan_local", file = "scan_local_comp.spv" },
+        { name = "scan_group", file = "scan_group_comp.spv" },
+        { name = "scan_add",   file = "scan_add_comp.spv" },
+        { name = "reorder",    file = "reorder_comp.spv" }
+    },
 }
 
 -- 3. THE SEQUENCE
@@ -299,7 +308,20 @@ bp.sequence = {
 
             ctx.desc_state = descriptors.Init(ctx.vk_runtime.vk, ctx.vk_runtime.device, master_gpu_buffer)
         end
-    }
+    },
+
+    {
+        name = "Compute Graph Pipelines",
+        action = function(ctx, r)
+            local compute = require("compute_pipeline")
+
+            -- Fetch the layout created by the Descriptors stage
+            local layout = ctx.desc_state.pipelineLayout
+
+            -- Feed the module our dynamically sized requirements
+            ctx.comp_state = compute.Init(ctx.vk_runtime.vk, ctx.vk_runtime.device, layout, r.compute_pipelines)
+        end
+    },
 }
 
 return bp
