@@ -309,6 +309,7 @@ local function main()
 
             local last_key = ffi.C.vx_input_last_key()
             if last_key == bp.key.esc then ffi.C.vx_core_shutdown()
+            elseif last_key == bp.key.f5 then wants_hotswap = true
             elseif last_key == bp.key.num1 then active_render_mode = bp.mode.dual
             elseif last_key == bp.key.num2 then active_render_mode = bp.mode.geom
             elseif last_key == bp.key.num3 then active_render_mode = bp.mode.points
@@ -473,11 +474,19 @@ local function main()
                     packet.draw_count = 1
                 end
 
+                if wants_hotswap then
+                    print("\n[LUA] Initiating Lock-Free Shader Hotswap...")
+                    -- Recompile shaders and push old pipelines into the garbage collector ring
+                    require("graphics_pipeline").HotReloadShaders(vk_rt.vk, vk_rt, gfx, frame_count)
+                    wants_hotswap = false
+                    print("[LUA] Hotswap Complete. New pipelines active.\n")
+                end
+
                 ffi.C.vx_stream_commit(write_idx)
 
                 require("graphics_pipeline").PumpDeletionQueue(vk_rt.vk, vk_rt, frame_count)
                 frame_count = frame_count + 1
-            end
+            end -- End of if write_idx ~= -1
         end
         sys_sleep(10)
     end
