@@ -8,7 +8,7 @@ local bp = {
     sys = { idle = 0, boot = 1, kill = 2 },
     win = { w = 1280, h = 720, min_w = 640, min_h = 360 },
     -- EXTRACTION: Added pc_size = 128 to the global config
-    cfg = { use_validation = 1, vk_api_version = 4206592, pcount = 1000000, grid_cells = 262144, pc_size = 128 },
+    cfg = { use_validation = 1, vk_api_version = 4206592, pcount = 1000000, grid_cells = 262144, pc_size = 128, frame_slots = 10, swap_slots = 10 },
 
     mode = { dual = 0, geom = 1, points = 2, point_cloud_pass = 88 },
     -- [MISSING DATA ADDED BACK FOR SHADER_GEN]
@@ -88,7 +88,33 @@ local bp = {
         composite_alpha_opaque     = 1,
         present_mode_fifo          = 2,
     },
+    -- MISSING VOCABULARY NEEDED BY GRAPHICS_PIPELINE.LUA
+    vk_state = {
+        cull_none  = 0, front_ccw = 0,
+        topo_point = 0, topo_tri  = 3,
+        cmp_le     = 4,
+        depth_off  = 0, depth_on  = 1,
+    },
 
+    vk_pipeline = {
+        poly_mode_fill  = 0,
+        cull_back       = 1,
+        face_ccw        = 0,
+        blend_src_alpha = 6,
+        blend_one       = 1,
+        color_mask_rgba = 15,
+    },
+
+    vk_dynamic = {
+        viewport             = 0,
+        scissor              = 1,
+        cull_mode_ext        = 1000267000,
+        front_face_ext       = 1000267001,
+        primitive_topo_ext   = 1000267002,
+        depth_test_ext       = 1000267006,
+        depth_write_ext      = 1000267007,
+        depth_compare_op_ext = 1000267008,
+    },
     -- MISSING VOCABULARY NEEDED BY DESCRIPTORS.LUA
     vk_shader_stage = { vert = 1, frag = 16, comp = 32 },
     vk_desc = { ssbo = 7 },
@@ -248,7 +274,35 @@ local bp = {
         { name = "scan_add",   file = "scan_add_comp.spv" },
         { name = "reorder",    file = "reorder_comp.spv" }
     },
+
+    -- We define these using the raw integers we extracted earlier,
+    -- or you can reference them dynamically if you structure the table carefully.
+    -- topo_point = 0, topo_tri = 3, cull_none = 0, cull_back = 1
+    graphics_pipelines = {
+        geom = {
+            vert = "render_vert.spv",
+            frag = "render_frag.spv",
+            topology = 3,
+            cull_mode = 1,
+            depth_test = 1,
+            depth_write = 1,
+            blend_enable = 0
+        },
+        points = {
+            vert = "render_vert.spv",
+            frag = "render_frag.spv",
+            topology = 0,
+            cull_mode = 0,
+            depth_test = 1,
+            depth_write = 0,
+            blend_enable = 1
+        }
+    },
 }
+
+-- INJECT STRUCTS INTO LUA FFI COMPILER
+ffi.cdef(bp.c_math_structs)
+ffi.cdef(bp.c_vk_structs)
 
 -- 3. THE SEQUENCE
 bp.sequence = {
@@ -320,6 +374,96 @@ bp.sequence = {
 
             -- Feed the module our dynamically sized requirements
             ctx.comp_state = compute.Init(ctx.vk_runtime.vk, ctx.vk_runtime.device, layout, r.compute_pipelines)
+        end
+    },
+
+    {
+        name = "Graphics Pipelines & Depth Buffer",
+        action = function(ctx, r)
+            local graphics = require("graphics_pipeline")
+
+            -- Harvest context from prior stages
+            local layout = ctx.desc_state.pipelineLayout
+            local colorFormat = ctx.sc_state.format
+            local w, h = r.win.w, r.win.h
+
+            -- Pass the dynamic registry configurations
+            ctx.gfx_state = graphics.Init(
+                ctx.vk_runtime.vk,
+                ctx.vk_runtime,
+                w, h,
+                layout,
+                colorFormat,
+                r.graphics_pipelines
+            )
+        end
+    },
+    {
+        name = "Renderer Synchronization",
+        action = function(ctx, r)
+            local renderer = require("renderer")
+            -- We inject our policy (r.cfg.frame_slots) straight into the mechanism
+            ctx.sync_state = renderer.InitSync(
+                ctx.vk_runtime.vk,
+                ctx.vk_runtime.device,
+                r.cfg.frame_slots
+            )
+        end
+    },
+    {
+        name = "Async Overlord Handoff",
+        action = function(ctx, r)
+            print("[WEAVER] Packing C-Core Mailbox and firing Render Thread...")
+
+            -- Harvest the context
+            local vk = ctx.vk_runtime.vk
+            local dev = ctx.vk_runtime.device
+            local sc = ctx.sc_state
+            local sync = ctx.sync_state
+
+            -- Populate the C-Struct
+            local wsi = ffi.new("RenderThreadInit")
+            wsi.device = dev
+            wsi.queue = ctx.vk_runtime.queue
+            wsi.swapchain = sc.handle
+
+            for i = 0, sc.imageCount - 1 do
+                wsi.swapchain_images[i] = ffi.cast("uint64_t", sc.images[i])
+                wsi.swapchain_views[i]  = ffi.cast("uint64_t", sc.imageViews[i])
+            end
+
+            for i = 0, r.cfg.frame_slots - 1 do
+                wsi.image_available[i] = sync.imageAvailable[i]
+                wsi.render_finished[i] = sync.renderFinished[i]
+                wsi.in_flight[i]       = sync.inFlight[i]
+            end
+
+            -- Bind Vulkan Function Pointers for the C-Core
+            wsi.vkWaitForFences       = ffi.cast("void*", vk.vkGetDeviceProcAddr(dev, "vkWaitForFences"))
+            wsi.vkAcquireNextImageKHR = ffi.cast("void*", vk.vkGetDeviceProcAddr(dev, "vkAcquireNextImageKHR"))
+            wsi.vkResetFences         = ffi.cast("void*", vk.vkGetDeviceProcAddr(dev, "vkResetFences"))
+            wsi.vkQueueSubmit         = ffi.cast("void*", vk.vkGetDeviceProcAddr(dev, "vkQueueSubmit"))
+            wsi.vkQueuePresentKHR     = ffi.cast("void*", vk.vkGetDeviceProcAddr(dev, "vkQueuePresentKHR"))
+            wsi.pfnBegin              = ffi.cast("void*", vk.vkGetDeviceProcAddr(dev, "vkCmdBeginRenderingKHR"))
+            wsi.pfnEnd                = ffi.cast("void*", vk.vkGetDeviceProcAddr(dev, "vkCmdEndRenderingKHR"))
+            wsi.pfnSetCullMode          = vk.vkGetDeviceProcAddr(dev, "vkCmdSetCullModeEXT")
+            wsi.pfnSetFrontFace         = vk.vkGetDeviceProcAddr(dev, "vkCmdSetFrontFaceEXT")
+            wsi.pfnSetPrimitiveTopology = vk.vkGetDeviceProcAddr(dev, "vkCmdSetPrimitiveTopologyEXT")
+            wsi.pfnSetDepthTestEnable   = vk.vkGetDeviceProcAddr(dev, "vkCmdSetDepthTestEnableEXT")
+            wsi.pfnSetDepthWriteEnable  = vk.vkGetDeviceProcAddr(dev, "vkCmdSetDepthWriteEnableEXT")
+            wsi.pfnSetDepthCompareOp    = vk.vkGetDeviceProcAddr(dev, "vkCmdSetDepthCompareOpEXT")
+
+            -- Expose the C-Functions needed to start the thread
+            ffi.cdef[[
+                void vx_stream_init(RenderThreadInit* wsi);
+                void vx_thread_start();
+            ]]
+
+            -- Fire!
+            ffi.C.vx_stream_init(wsi)
+            ffi.C.vx_thread_start()
+
+            print("[WEAVER] Engine Initialization Complete. Async Overlord is LIVE.")
         end
     },
 }
