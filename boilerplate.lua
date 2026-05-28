@@ -272,14 +272,14 @@ local bp = {
 
     compute_pipelines = {
         -- dispatch mapping: "grid" = cells/256, "particle" = pcount/256, "groups" = NUM_GROUPS, "single" = 1
-        { name = "clear",      file = "spv/clear_comp.spv",      dispatch = "grid",     b_src_stage = 2048, b_dst_stage = 2048, b_src_access = 64, b_dst_access = 96 },
-        { name = "hash",       file = "spv/hash_comp.spv",       dispatch = "particle", b_src_stage = 2048, b_dst_stage = 2048, b_src_access = 64, b_dst_access = 96 },
-        { name = "scan_local", file = "spv/scan_local_comp.spv", dispatch = "groups",   b_src_stage = 2048, b_dst_stage = 2048, b_src_access = 64, b_dst_access = 96 },
-        { name = "scan_group", file = "spv/scan_group_comp.spv", dispatch = "single",   b_src_stage = 2048, b_dst_stage = 2048, b_src_access = 64, b_dst_access = 96 },
-        { name = "scan_add",   file = "spv/scan_add_comp.spv",   dispatch = "groups",   b_src_stage = 2048, b_dst_stage = 2048, b_src_access = 64, b_dst_access = 96 },
+        { name = "clear",      file = "bin/clear_comp.spv",      dispatch = "grid",     b_src_stage = 2048, b_dst_stage = 2048, b_src_access = 64, b_dst_access = 96 },
+        { name = "hash",       file = "bin/hash_comp.spv",       dispatch = "particle", b_src_stage = 2048, b_dst_stage = 2048, b_src_access = 64, b_dst_access = 96 },
+        { name = "scan_local", file = "bin/scan_local_comp.spv", dispatch = "groups",   b_src_stage = 2048, b_dst_stage = 2048, b_src_access = 64, b_dst_access = 96 },
+        { name = "scan_group", file = "bin/scan_group_comp.spv", dispatch = "single",   b_src_stage = 2048, b_dst_stage = 2048, b_src_access = 64, b_dst_access = 96 },
+        { name = "scan_add",   file = "bin/scan_add_comp.spv",   dispatch = "groups",   b_src_stage = 2048, b_dst_stage = 2048, b_src_access = 64, b_dst_access = 96 },
 
         -- Final pass writes to the Vertex buffer (Stage 12, Access 36)
-        { name = "reorder",    file = "spv/reorder_comp.spv",    dispatch = "particle", b_src_stage = 2048, b_dst_stage = 12,   b_src_access = 64, b_dst_access = 36 }
+        { name = "reorder",    file = "bin/reorder_comp.spv",    dispatch = "particle", b_src_stage = 2048, b_dst_stage = 12,   b_src_access = 64, b_dst_access = 36 }
     },
 
     -- We define these using the raw integers we extracted earlier,
@@ -287,8 +287,8 @@ local bp = {
     -- topo_point = 0, topo_tri = 3, cull_none = 0, cull_back = 1
     graphics_pipelines = {
         geom = {
-            vert = "spv/render_vert.spv",
-            frag = "spv/render_frag.spv",
+            vert = "bin/render_vert.spv",
+            frag = "bin/render_frag.spv",
             topology = 3,
             cull_mode = 1,
             depth_test = 1,
@@ -296,8 +296,8 @@ local bp = {
             blend_enable = 0
         },
         points = {
-            vert = "spv/render_vert.spv",
-            frag = "spv/render_frag.spv",
+            vert = "bin/render_vert.spv",
+            frag = "bin/render_frag.spv",
             topology = 0,
             cull_mode = 0,
             depth_test = 1,

@@ -2,14 +2,14 @@ local VULKAN_SDK_PATH = "C:/VulkanSDK/1.4.341.1"
 
 -- Dictionary of all shaders required by the Weaver
 local shaders = {
-    { src = "render.vert",       dst = "spv/render_vert.spv" },
-    { src = "render.frag",       dst = "spv/render_frag.spv" },
-    { src = "clear.comp",        dst = "spv/clear_comp.spv" },
-    { src = "hash.comp",         dst = "spv/hash_comp.spv" },
-    { src = "scan_local.comp",   dst = "spv/scan_local_comp.spv" },
-    { src = "scan_group.comp",   dst = "spv/scan_group_comp.spv" },
-    { src = "scan_add.comp",     dst = "spv/scan_add_comp.spv" },
-    { src = "reorder.comp",      dst = "spv/reorder_comp.spv" }
+    { src = "render.vert",       dst = "bin/render_vert.spv" },
+    { src = "render.frag",       dst = "bin/render_frag.spv" },
+    { src = "clear.comp",        dst = "bin/clear_comp.spv" },
+    { src = "hash.comp",         dst = "bin/hash_comp.spv" },
+    { src = "scan_local.comp",   dst = "bin/scan_local_comp.spv" },
+    { src = "scan_group.comp",   dst = "bin/scan_group_comp.spv" },
+    { src = "scan_add.comp",     dst = "bin/scan_add_comp.spv" },
+    { src = "reorder.comp",      dst = "bin/reorder_comp.spv" }
 }
 
 local function copy_file(source, destination)
@@ -69,9 +69,9 @@ local function compile_engine(platform)
     print("\n[3/4] Compiling AVX2 Worker Pool (vx_math.c)...")
     local math_cmd = ""
     if platform == "linux" then
-        math_cmd = "gcc -shared -fPIC -O3 -march=x86-64-v3 -mavx2 -lm vx_math.c -o libvx_math.so"
+        math_cmd = "gcc -shared -fPIC -O3 -march=x86-64-v3 -mavx2 -lm vx_math.c -o bin/libvx_math.so"
     elseif platform == "win" then
-        math_cmd = "gcc -shared -O3 -march=x86-64-v3 -mavx2 vx_math.c -o vx_math.dll"
+        math_cmd = "gcc -shared -O3 -march=x86-64-v3 -mavx2 vx_math.c -o bin/vx_math.dll"
     end
 
     if not run_cmd(math_cmd) then
@@ -83,7 +83,7 @@ local function compile_engine(platform)
     -- [4/4] Compile Host C-Core
     print("\n[4/4] Compiling Laboratory Host (main.c) ...")
     if platform == "linux" then
-        local linux_build_main = "gcc main.c -O3 -march=x86-64-v3 -Wl,-E -I/usr/include/luajit-2.1 -lglfw -lvulkan -lluajit-5.1 -lm -lpthread -o boot"
+        local linux_build_main = "gcc main.c -O3 -march=x86-64-v3 -Wl,-E -I/usr/include/luajit-2.1 -lglfw -lvulkan -lluajit-5.1 -lm -lpthread -o bin/boot"
         if not run_cmd(linux_build_main) then
             print("ERROR: main.c compilation failed!")
             os.exit(1)
@@ -92,7 +92,7 @@ local function compile_engine(platform)
     elseif platform == "win" then
         local LUA_INC = "C:/msys64/mingw64/include/luajit-2.1"
         local win_build_main = string.format(
-            'gcc main.c -O3 -march=x86-64-v3 -I"%s" -I"%s/Include" -L"%s/Lib" -lws2_32 -lglfw3 -lvulkan-1 -lluajit-5.1 -lm -o boot.exe',
+            'gcc main.c -O3 -march=x86-64-v3 -I"%s" -I"%s/Include" -L"%s/Lib" -lws2_32 -lglfw3 -lvulkan-1 -lluajit-5.1 -lm -o bin/boot.exe',
             LUA_INC, VULKAN_SDK_PATH, VULKAN_SDK_PATH
         )
         if not run_cmd(win_build_main) then
@@ -101,8 +101,8 @@ local function compile_engine(platform)
         end
 
         print("\n[Packing Windows Dependencies (DLLs)...]")
-        copy_file("C:/msys64/mingw64/bin/glfw3.dll", "glfw3.dll")
-        copy_file("C:/msys64/mingw64/bin/lua51.dll", "lua51.dll")
+        copy_file("C:/msys64/mingw64/bin/glfw3.dll", "bin/glfw3.dll")
+        copy_file("C:/msys64/mingw64/bin/lua51.dll", "bin/lua51.dll")
         print("  |- DLLs copied successfully.")
     else
         print("ERROR: Unknown platform. Use 'linux' or 'win'.")

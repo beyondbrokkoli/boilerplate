@@ -141,7 +141,7 @@ local function main()
     for i, idx in ipairs(indices) do idx_ptr[i - 1] = idx end
 
     -- 5. Boot the AVX2 Math Pool
-    local vmath_lib = ffi.load(jit.os == "Windows" and "vx_math.dll" or "./libvx_math.so")
+    local vmath_lib = ffi.load(jit.os == "Windows" and "bin/vx_math.dll" or "bin/libvx_math.so")
     vmath_lib.vmath_init_workers(8)
 
     -- 6. Runtime State Initialization
