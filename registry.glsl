@@ -1,4 +1,4 @@
-// AUTO-GENERATED FROM registry.lua
+// AUTO-GENERATED FROM registry_export.lua
 #ifndef REGISTRY_GLSL
 #define REGISTRY_GLSL
 
