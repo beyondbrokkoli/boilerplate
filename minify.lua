@@ -82,7 +82,7 @@ local order = get_sorted_files()
 
 -- Explicitly add non-Lua components and the build system
 table.insert(order, "build.lua")
-table.insert(order, "shader_gen.lua")
+table.insert(order, "registry_export.lua")
 table.insert(order, "shared_structs.h")
 table.insert(order, "main.c")
 table.insert(order, "vx_math.c")

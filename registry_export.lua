@@ -1,4 +1,4 @@
--- shader_gen.lua
+-- registry_export.lua
 local reg = require("boilerplate")
 
 -- Helper to sort table keys alphabetically
