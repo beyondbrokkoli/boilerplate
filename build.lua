@@ -119,7 +119,7 @@ if target_platform ~= "linux" and target_platform ~= "win" then
     print("========================================")
     print("  [FATAL] Missing or invalid target platform!")
     print("  Usage:   luajit build.lua <linux|win>")
-    print("  Example: luajit build.lua linux")
+    print("  Example: luajit build.lua win")
     print("========================================")
     os.exit(1)
 end
