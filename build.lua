@@ -2,14 +2,14 @@ local VULKAN_SDK_PATH = "C:/VulkanSDK/1.4.341.1"
 
 -- Dictionary of all shaders required by the Weaver
 local shaders = {
-    { src = "render.vert",       dst = "render_vert.spv" },
-    { src = "render.frag",       dst = "render_frag.spv" },
-    { src = "clear.comp",        dst = "clear_comp.spv" },
-    { src = "hash.comp",         dst = "hash_comp.spv" },
-    { src = "scan_local.comp",   dst = "scan_local_comp.spv" },
-    { src = "scan_group.comp",   dst = "scan_group_comp.spv" },
-    { src = "scan_add.comp",     dst = "scan_add_comp.spv" },
-    { src = "reorder.comp",      dst = "reorder_comp.spv" }
+    { src = "render.vert",       dst = "spv/render_vert.spv" },
+    { src = "render.frag",       dst = "spv/render_frag.spv" },
+    { src = "clear.comp",        dst = "spv/clear_comp.spv" },
+    { src = "hash.comp",         dst = "spv/hash_comp.spv" },
+    { src = "scan_local.comp",   dst = "spv/scan_local_comp.spv" },
+    { src = "scan_group.comp",   dst = "spv/scan_group_comp.spv" },
+    { src = "scan_add.comp",     dst = "spv/scan_add_comp.spv" },
+    { src = "reorder.comp",      dst = "spv/reorder_comp.spv" }
 }
 
 local function copy_file(source, destination)
