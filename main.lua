@@ -177,209 +177,289 @@ local function main()
     local c_seed = cpu_soa.seed
     local active_render_mode = bp.mode.dual
 
+    local is_resizing = false
+    local last_resize_time = get_time_hires()
+    local RESIZE_COOLDOWN = 0.25
+
     print("[LUA CO] Entering Data-Driven Render Loop...")
 
     while ffi.C.vx_core_is_running() == 1 do
         -- (Skipping the resize block for this immediate test to keep it focused)
+        if ffi.C.vx_sys_resize_flag() == 1 then
+            is_resizing = true
+            last_resize_time = get_time_hires()
+        end
 
-        local current_time = get_time_hires()
-        local dt = math.max(0.001, math.min(current_time - last_time, 0.033))
-        last_time = current_time
+        if is_resizing then
+            if (get_time_hires() - last_resize_time) > RESIZE_COOLDOWN then
+                local new_w, new_h = ffi.new("int[1]"), ffi.new("int[1]")
+                ffi.C.vx_sys_window_size(new_w, new_h)
 
-        -- Input Polling
-        local dx = ffi.C.vx_input_mouse_dx()
-        local dy = ffi.C.vx_input_mouse_dy()
-        local wasd = ffi.C.vx_input_wasd()
+                if new_w[0] > 0 and new_h[0] > 0 then
+                    print("\n[LUA CO] Window Stable. Initiating Mini-Weaver Rebuild...")
 
-        cam_yaw = cam_yaw + (dx * sensitivity)
-        cam_pitch = math.max(-1.5, math.min(1.5, cam_pitch + (dy * sensitivity)))
+                    -- 1. Halt the Async Overlord
+                    ffi.C.vx_thread_kill()
+                    vk_rt.vk.vkDeviceWaitIdle(vk_rt.device)
 
-        local fwd_x = math.sin(cam_yaw) * math.cos(cam_pitch)
-        local fwd_y = -math.sin(cam_pitch)
-        local fwd_z = math.cos(cam_yaw) * math.cos(cam_pitch)
-        local right_x = math.cos(cam_yaw)
-        local right_z = -math.sin(cam_yaw)
-        local frame_speed = move_speed * dt
+                    -- 2. Teardown old state (Wait to destroy swapchain until the new one is built)
+                    require("graphics_pipeline").Destroy(vk_rt.vk, vk_rt, gfx)
+                    require("renderer").Destroy(vk_rt.vk, vk_rt.device, sync, bp.cfg.frame_slots)
 
-        if bit.band(wasd, 1) ~= 0 then cam_pos.x = cam_pos.x + fwd_x * frame_speed; cam_pos.y = cam_pos.y + fwd_y * frame_speed; cam_pos.z = cam_pos.z + fwd_z * frame_speed end
-        if bit.band(wasd, 2) ~= 0 then cam_pos.x = cam_pos.x - fwd_x * frame_speed; cam_pos.y = cam_pos.y - fwd_y * frame_speed; cam_pos.z = cam_pos.z - fwd_z * frame_speed end
-        if bit.band(wasd, 4) ~= 0 then cam_pos.x = cam_pos.x - right_x * frame_speed; cam_pos.z = cam_pos.z - right_z * frame_speed end
-        if bit.band(wasd, 8) ~= 0 then cam_pos.x = cam_pos.x + right_x * frame_speed; cam_pos.z = cam_pos.z + right_z * frame_speed end
-        if bit.band(wasd, 16) ~= 0 then cam_pos.y = cam_pos.y + frame_speed end
-        if bit.band(wasd, 32) ~= 0 then cam_pos.y = cam_pos.y - frame_speed end
+                    -- 3. Update the Boilerplate Policy with new dimensions
+                    bp.win.w = new_w[0]
+                    bp.win.h = new_h[0]
 
-        vmath.lookAt(cam_pos.x, cam_pos.y, cam_pos.z, cam_pos.x + fwd_x, cam_pos.y + fwd_y, cam_pos.z + fwd_z, view)
+                    -- 4. Seed the Mini-Weaver Context
+                    local mini_ctx = {
+                        vk_runtime = vk_rt,
+                        desc_state = desc,        -- Needed by Graphics Pipeline for layout
+                        old_swapchain = sc.handle -- Vital for smooth Vulkan handoff!
+                    }
 
-        pc.dt = pc.dt + dt
-        total_time = total_time + dt
-        pc.total_time = total_time
-        pc.spread = 120.0
-        pc.highlight_power = 64.0
-        pc.algae_color = 0xFF22AA44
-        pc.water_color = 0xFFFF8800
-        pc.bg_color_b = 0xFF442211
-        vmath.multiply_mat4(proj, view, pc.viewProj)
+                    -- 5. Execute the Mini-Weaver Coroutine
+                    local resize_co = coroutine.create(function()
+                        for _, stage in ipairs(bp.resize_sequence) do
+                            print(string.format("[MINI-WEAVER] Executing: %s", stage.name))
+                            stage.action(mini_ctx, bp)
+                        end
+                        return mini_ctx
+                    end)
 
-        local space_is_down = (ffi.C.vx_input_spacebar() == 1)
-        if space_is_down then
-            if not space_was_pressed then
-                current_swarm_state = (current_swarm_state % bp.cfg.swarm_states) + 1
-                space_was_pressed = true
+                    local status, new_ctx
+                    while coroutine.status(resize_co) ~= "dead" do
+                        status, new_ctx = coroutine.resume(resize_co)
+                        if not status then error("Mini-Weaver Crash: " .. tostring(new_ctx)) end
+                    end
+
+                    -- 6. Clean up the old swapchain now that the driver has transitioned
+                    require("swapchain").Destroy(vk_rt.vk, vk_rt, sc)
+
+                    -- 7. Overwrite our hot-loop variables with the freshly woven state
+                    sc = new_ctx.sc_state
+                    gfx = new_ctx.gfx_state
+                    sync = new_ctx.sync_state
+
+                    -- 8. Fire the C-Core back up by explicitly invoking Stage 10!
+                    bp.sequence[10].action(new_ctx, bp)
+
+                    print("[LUA CO] Mini-Weaver Rebuild Complete.\n")
+                    
+                    -- Update aspect ratio for projection matrix
+                    aspect = sc.extent.width / math.max(1, sc.extent.height)
+                    vmath.perspective_inf_revz(70.0, aspect, 0.1, proj)
+
+                    is_resizing = false
+                    last_time = get_time_hires()
+                else
+                    last_resize_time = get_time_hires() - (RESIZE_COOLDOWN * 0.9)
+                end
             end
         else
-            space_was_pressed = false
-        end
+            -- ... [Your existing Current Time / Input / Dispatch / Command Recording goes here] ...
 
-        local last_key = ffi.C.vx_input_last_key()
-        if last_key == bp.key.esc then ffi.C.vx_core_shutdown()
-        elseif last_key == bp.key.num1 then active_render_mode = bp.mode.dual
-        elseif last_key == bp.key.num2 then active_render_mode = bp.mode.geom
-        elseif last_key == bp.key.num3 then active_render_mode = bp.mode.points
-        end
 
-        pc.bg_color_a = active_render_mode
-        swarm_cmd.target_state = current_swarm_state - 1
-        swarm_cmd.push_active = ffi.C.vx_input_mouse_btn(0)
-        swarm_cmd.pull_active = ffi.C.vx_input_mouse_btn(1)
-        swarm_cmd.mouse_x = 0.0
-        swarm_cmd.mouse_y = 5000.0
 
-        -- Synchronous CPU Math execution
-        vmath_lib.vmath_dispatch_swarm(
-            pc.particle_count, c_px, c_py, c_pz, c_vx, c_vy, c_vz, c_seed,
-            swarm_cmd, pc.dt, dt, 9.81, 1.0, 1.0
-        )
 
-        -- 1. Acquire Ring Buffer Slot
-        local write_idx = ffi.C.vx_stream_acquire()
 
-        if write_idx ~= -1 then
-            local prev_idx = (write_idx - 1 + bp.cfg.frame_slots) % bp.cfg.frame_slots
-            local padded_capacity = math.ceil(pc.particle_count / 8) * 8
+            local current_time = get_time_hires()
+            local dt = math.max(0.001, math.min(current_time - last_time, 0.033))
+            last_time = current_time
 
-            -- Memory Offsets (Reconstructed from your old logic)
-            local FRAME_TOTAL_WORDS = math.ceil(((padded_capacity * 3) + (padded_capacity * 4) + padded_capacity + (bp.cfg.grid_cells * 2) + 128) / 16) * 16
-            local current_frame_offset = write_idx * FRAME_TOTAL_WORDS
-            local prev_frame_offset = prev_idx * FRAME_TOTAL_WORDS
+            -- Input Polling
+            local dx = ffi.C.vx_input_mouse_dx()
+            local dy = ffi.C.vx_input_mouse_dy()
+            local wasd = ffi.C.vx_input_wasd()
 
-            local gpu_px = master_ptr + current_frame_offset
-            local gpu_py = master_ptr + (current_frame_offset + padded_capacity)
-            local gpu_pz = master_ptr + (current_frame_offset + (padded_capacity * 2))
+            cam_yaw = cam_yaw + (dx * sensitivity)
+            cam_pitch = math.max(-1.5, math.min(1.5, cam_pitch + (dy * sensitivity)))
 
-            vmath_lib.vx_math_stream_pos(padded_capacity, c_px, c_py, c_pz, gpu_px, gpu_py, gpu_pz)
+            local fwd_x = math.sin(cam_yaw) * math.cos(cam_pitch)
+            local fwd_y = -math.sin(cam_pitch)
+            local fwd_z = math.cos(cam_yaw) * math.cos(cam_pitch)
+            local right_x = math.cos(cam_yaw)
+            local right_z = -math.sin(cam_yaw)
+            local frame_speed = move_speed * dt
 
-            local aos_local_offset = padded_capacity * 3
-            pc.soa_upload_idx = current_frame_offset
-            pc.aos_current_idx = current_frame_offset + aos_local_offset
-            pc.aos_prev_idx = prev_frame_offset + aos_local_offset
-            pc.sorted_idx = current_frame_offset + aos_local_offset + (padded_capacity * 4)
-            pc.cell_counters_idx = pc.sorted_idx + padded_capacity
-            pc.cell_offsets_idx = pc.cell_counters_idx + bp.cfg.grid_cells
+            if bit.band(wasd, 1) ~= 0 then cam_pos.x = cam_pos.x + fwd_x * frame_speed; cam_pos.y = cam_pos.y + fwd_y * frame_speed; cam_pos.z = cam_pos.z + fwd_z * frame_speed end
+            if bit.band(wasd, 2) ~= 0 then cam_pos.x = cam_pos.x - fwd_x * frame_speed; cam_pos.y = cam_pos.y - fwd_y * frame_speed; cam_pos.z = cam_pos.z - fwd_z * frame_speed end
+            if bit.band(wasd, 4) ~= 0 then cam_pos.x = cam_pos.x - right_x * frame_speed; cam_pos.z = cam_pos.z - right_z * frame_speed end
+            if bit.band(wasd, 8) ~= 0 then cam_pos.x = cam_pos.x + right_x * frame_speed; cam_pos.z = cam_pos.z + right_z * frame_speed end
+            if bit.band(wasd, 16) ~= 0 then cam_pos.y = cam_pos.y + frame_speed end
+            if bit.band(wasd, 32) ~= 0 then cam_pos.y = cam_pos.y - frame_speed end
 
-            local packet = ffi.C.vx_stream_packet(write_idx)
-            local current_queue_ptr = render_queues + (write_idx * MAX_DRAW_COMMANDS)
-            local current_comp_queue = compute_queues + (write_idx * MAX_COMPUTE_COMMANDS)
+            vmath.lookAt(cam_pos.x, cam_pos.y, cam_pos.z, cam_pos.x + fwd_x, cam_pos.y + fwd_y, cam_pos.z + fwd_z, view)
 
-            -- ==========================================
-            -- DATA-DRIVEN COMPUTE GRAPH
-            -- ==========================================
-            packet.comp_queue = current_comp_queue
-            packet.comp_count = #bp.compute_pipelines
+            pc.dt = pc.dt + dt
+            total_time = total_time + dt
+            pc.total_time = total_time
+            pc.spread = 120.0
+            pc.highlight_power = 64.0
+            pc.algae_color = 0xFF22AA44
+            pc.water_color = 0xFFFF8800
+            pc.bg_color_b = 0xFF442211
+            vmath.multiply_mat4(proj, view, pc.viewProj)
 
-            for i, cfg in ipairs(bp.compute_pipelines) do
-                local cmd = current_comp_queue[i - 1]
-
-                cmd.pipeline_id = ffi.cast("uint64_t", comp.pipelines[cfg.name])
-                cmd.layout_id = ffi.cast("uint64_t", comp.pipelineLayout)
-                cmd.descriptor_set = ffi.cast("uint64_t", desc.set0)
-                cmd.group_y = 1
-                cmd.group_z = 1
-                cmd.pc_offset = 0
-                cmd.pc_size = bp.cfg.pc_size
-                ffi.copy(cmd.push_constants, pc, bp.cfg.pc_size)
-
-                -- Dispatch Logic
-                if cfg.dispatch == "grid" then cmd.group_x = math.ceil(bp.cfg.grid_cells / 256)
-                elseif cfg.dispatch == "particle" then cmd.group_x = math.ceil(pc.particle_count / 256)
-                elseif cfg.dispatch == "groups" then cmd.group_x = math.ceil(bp.cfg.grid_cells / (1024 * 2))
-                elseif cfg.dispatch == "single" then cmd.group_x = 1
+            local space_is_down = (ffi.C.vx_input_spacebar() == 1)
+            if space_is_down then
+                if not space_was_pressed then
+                    current_swarm_state = (current_swarm_state % bp.cfg.swarm_states) + 1
+                    space_was_pressed = true
                 end
-
-                -- Barrier Logic
-                cmd.barrier_src_stage = cfg.b_src_stage
-                cmd.barrier_dst_stage = cfg.b_dst_stage
-                cmd.barrier_src_access = cfg.b_src_access
-                cmd.barrier_dst_access = cfg.b_dst_access
+            else
+                space_was_pressed = false
             end
 
-            -- ==========================================
-            -- DATA-DRIVEN GRAPHICS GRAPH
-            -- ==========================================
-            packet.gfx_layout = ffi.cast("uint64_t", gfx.pipelineLayout)
-            packet.vertex_buffer = ffi.cast("uint64_t", memory.Buffers["MASTER_GPU_BLOCK"])
-            packet.index_buffer = ffi.cast("uint64_t", memory.Buffers["MASTER_INDEX_BLOCK"])
-            packet.depth_image = ffi.cast("uint64_t", gfx.depthImage)
-            packet.depth_view = ffi.cast("uint64_t", gfx.depthImageView)
-            packet.width = sc.extent.width
-            packet.height = sc.extent.height
+            local last_key = ffi.C.vx_input_last_key()
+            if last_key == bp.key.esc then ffi.C.vx_core_shutdown()
+            elseif last_key == bp.key.num1 then active_render_mode = bp.mode.dual
+            elseif last_key == bp.key.num2 then active_render_mode = bp.mode.geom
+            elseif last_key == bp.key.num3 then active_render_mode = bp.mode.points
+            end
 
-            -- Render Geometry Pass (From Boilerplate)
-            local cmd0 = current_queue_ptr[0]
-            local geom_cfg = bp.graphics_pipelines.geom
-            cmd0.pipeline_id = ffi.cast("uint64_t", gfx.pipelines["geom"])
-            cmd0.descriptor_set = ffi.cast("uint64_t", desc.set0)
-            cmd0.index_count = 24
-            cmd0.first_index = 0
-            cmd0.vertex_offset = 0
-            cmd0.instance_count = pc.particle_count
-            cmd0.first_instance = 0
-            cmd0.pc_offset = 0
-            cmd0.pc_size = bp.cfg.pc_size
-            ffi.copy(cmd0.push_constants, pc, bp.cfg.pc_size)
-            cmd0.scissor_w = sc.extent.width
-            cmd0.scissor_h = sc.extent.height
-            cmd0.cull_mode = geom_cfg.cull_mode
-            cmd0.front_face = 0
-            cmd0.topology = geom_cfg.topology
-            cmd0.depth_test = geom_cfg.depth_test
-            cmd0.depth_write = geom_cfg.depth_write
-            cmd0.depth_compare_op = 4
+            pc.bg_color_a = active_render_mode
+            swarm_cmd.target_state = current_swarm_state - 1
+            swarm_cmd.push_active = ffi.C.vx_input_mouse_btn(0)
+            swarm_cmd.pull_active = ffi.C.vx_input_mouse_btn(1)
+            swarm_cmd.mouse_x = 0.0
+            swarm_cmd.mouse_y = 5000.0
 
-            -- Render Points Pass (From Boilerplate)
-            local cmd1 = current_queue_ptr[1]
-            local points_cfg = bp.graphics_pipelines.points
-            cmd1.pipeline_id = ffi.cast("uint64_t", gfx.pipelines["points"])
-            cmd1.descriptor_set = ffi.cast("uint64_t", desc.set0)
-            cmd1.index_count = 1
-            cmd1.first_index = 0
-            cmd1.vertex_offset = 0
-            cmd1.instance_count = pc.particle_count
-            cmd1.first_instance = 0
-            cmd1.pc_offset = 0
-            cmd1.pc_size = bp.cfg.pc_size
-            ffi.copy(cmd1.push_constants, pc, bp.cfg.pc_size)
+            -- Synchronous CPU Math execution
+            vmath_lib.vmath_dispatch_swarm(
+                pc.particle_count, c_px, c_py, c_pz, c_vx, c_vy, c_vz, c_seed,
+                swarm_cmd, pc.dt, dt, 9.81, 1.0, 1.0
+            )
 
-            local pc_points_ptr = ffi.cast("PushConstants*", cmd1.push_constants)
-            pc_points_ptr.target_state = bp.mode.point_cloud_pass
+            -- 1. Acquire Ring Buffer Slot
+            local write_idx = ffi.C.vx_stream_acquire()
 
-            cmd1.scissor_w = sc.extent.width
-            cmd1.scissor_h = sc.extent.height
-            cmd1.cull_mode = points_cfg.cull_mode
-            cmd1.front_face = 0
-            cmd1.topology = points_cfg.topology
-            cmd1.depth_test = points_cfg.depth_test
-            cmd1.depth_write = points_cfg.depth_write
-            cmd1.depth_compare_op = 4
+            if write_idx ~= -1 then
+                local prev_idx = (write_idx - 1 + bp.cfg.frame_slots) % bp.cfg.frame_slots
+                local padded_capacity = math.ceil(pc.particle_count / 8) * 8
 
-            packet.draw_queue = current_queue_ptr
-            packet.draw_count = 2
+                -- Memory Offsets (Reconstructed from your old logic)
+                local FRAME_TOTAL_WORDS = math.ceil(((padded_capacity * 3) + (padded_capacity * 4) + padded_capacity + (bp.cfg.grid_cells * 2) + 128) / 16) * 16
+                local current_frame_offset = write_idx * FRAME_TOTAL_WORDS
+                local prev_frame_offset = prev_idx * FRAME_TOTAL_WORDS
 
-            ffi.C.vx_stream_commit(write_idx)
+                local gpu_px = master_ptr + current_frame_offset
+                local gpu_py = master_ptr + (current_frame_offset + padded_capacity)
+                local gpu_pz = master_ptr + (current_frame_offset + (padded_capacity * 2))
 
-            require("graphics_pipeline").PumpDeletionQueue(vk_rt.vk, vk_rt, frame_count)
-            frame_count = frame_count + 1
+                vmath_lib.vx_math_stream_pos(padded_capacity, c_px, c_py, c_pz, gpu_px, gpu_py, gpu_pz)
+
+                local aos_local_offset = padded_capacity * 3
+                pc.soa_upload_idx = current_frame_offset
+                pc.aos_current_idx = current_frame_offset + aos_local_offset
+                pc.aos_prev_idx = prev_frame_offset + aos_local_offset
+                pc.sorted_idx = current_frame_offset + aos_local_offset + (padded_capacity * 4)
+                pc.cell_counters_idx = pc.sorted_idx + padded_capacity
+                pc.cell_offsets_idx = pc.cell_counters_idx + bp.cfg.grid_cells
+
+                local packet = ffi.C.vx_stream_packet(write_idx)
+                local current_queue_ptr = render_queues + (write_idx * MAX_DRAW_COMMANDS)
+                local current_comp_queue = compute_queues + (write_idx * MAX_COMPUTE_COMMANDS)
+
+                -- ==========================================
+                -- DATA-DRIVEN COMPUTE GRAPH
+                -- ==========================================
+                packet.comp_queue = current_comp_queue
+                packet.comp_count = #bp.compute_pipelines
+
+                for i, cfg in ipairs(bp.compute_pipelines) do
+                    local cmd = current_comp_queue[i - 1]
+
+                    cmd.pipeline_id = ffi.cast("uint64_t", comp.pipelines[cfg.name])
+                    cmd.layout_id = ffi.cast("uint64_t", comp.pipelineLayout)
+                    cmd.descriptor_set = ffi.cast("uint64_t", desc.set0)
+                    cmd.group_y = 1
+                    cmd.group_z = 1
+                    cmd.pc_offset = 0
+                    cmd.pc_size = bp.cfg.pc_size
+                    ffi.copy(cmd.push_constants, pc, bp.cfg.pc_size)
+
+                    -- Dispatch Logic
+                    if cfg.dispatch == "grid" then cmd.group_x = math.ceil(bp.cfg.grid_cells / 256)
+                    elseif cfg.dispatch == "particle" then cmd.group_x = math.ceil(pc.particle_count / 256)
+                    elseif cfg.dispatch == "groups" then cmd.group_x = math.ceil(bp.cfg.grid_cells / (1024 * 2))
+                    elseif cfg.dispatch == "single" then cmd.group_x = 1
+                    end
+
+                    -- Barrier Logic
+                    cmd.barrier_src_stage = cfg.b_src_stage
+                    cmd.barrier_dst_stage = cfg.b_dst_stage
+                    cmd.barrier_src_access = cfg.b_src_access
+                    cmd.barrier_dst_access = cfg.b_dst_access
+                end
+
+                -- ==========================================
+                -- DATA-DRIVEN GRAPHICS GRAPH
+                -- ==========================================
+                packet.gfx_layout = ffi.cast("uint64_t", gfx.pipelineLayout)
+                packet.vertex_buffer = ffi.cast("uint64_t", memory.Buffers["MASTER_GPU_BLOCK"])
+                packet.index_buffer = ffi.cast("uint64_t", memory.Buffers["MASTER_INDEX_BLOCK"])
+                packet.depth_image = ffi.cast("uint64_t", gfx.depthImage)
+                packet.depth_view = ffi.cast("uint64_t", gfx.depthImageView)
+                packet.width = sc.extent.width
+                packet.height = sc.extent.height
+
+                -- Render Geometry Pass (From Boilerplate)
+                local cmd0 = current_queue_ptr[0]
+                local geom_cfg = bp.graphics_pipelines.geom
+                cmd0.pipeline_id = ffi.cast("uint64_t", gfx.pipelines["geom"])
+                cmd0.descriptor_set = ffi.cast("uint64_t", desc.set0)
+                cmd0.index_count = 24
+                cmd0.first_index = 0
+                cmd0.vertex_offset = 0
+                cmd0.instance_count = pc.particle_count
+                cmd0.first_instance = 0
+                cmd0.pc_offset = 0
+                cmd0.pc_size = bp.cfg.pc_size
+                ffi.copy(cmd0.push_constants, pc, bp.cfg.pc_size)
+                cmd0.scissor_w = sc.extent.width
+                cmd0.scissor_h = sc.extent.height
+                cmd0.cull_mode = geom_cfg.cull_mode
+                cmd0.front_face = 0
+                cmd0.topology = geom_cfg.topology
+                cmd0.depth_test = geom_cfg.depth_test
+                cmd0.depth_write = geom_cfg.depth_write
+                cmd0.depth_compare_op = 4
+
+                -- Render Points Pass (From Boilerplate)
+                local cmd1 = current_queue_ptr[1]
+                local points_cfg = bp.graphics_pipelines.points
+                cmd1.pipeline_id = ffi.cast("uint64_t", gfx.pipelines["points"])
+                cmd1.descriptor_set = ffi.cast("uint64_t", desc.set0)
+                cmd1.index_count = 1
+                cmd1.first_index = 0
+                cmd1.vertex_offset = 0
+                cmd1.instance_count = pc.particle_count
+                cmd1.first_instance = 0
+                cmd1.pc_offset = 0
+                cmd1.pc_size = bp.cfg.pc_size
+                ffi.copy(cmd1.push_constants, pc, bp.cfg.pc_size)
+
+                local pc_points_ptr = ffi.cast("PushConstants*", cmd1.push_constants)
+                pc_points_ptr.target_state = bp.mode.point_cloud_pass
+
+                cmd1.scissor_w = sc.extent.width
+                cmd1.scissor_h = sc.extent.height
+                cmd1.cull_mode = points_cfg.cull_mode
+                cmd1.front_face = 0
+                cmd1.topology = points_cfg.topology
+                cmd1.depth_test = points_cfg.depth_test
+                cmd1.depth_write = points_cfg.depth_write
+                cmd1.depth_compare_op = 4
+
+                packet.draw_queue = current_queue_ptr
+                packet.draw_count = 2
+
+                ffi.C.vx_stream_commit(write_idx)
+
+                require("graphics_pipeline").PumpDeletionQueue(vk_rt.vk, vk_rt, frame_count)
+                frame_count = frame_count + 1
+            end
         end
-
         sys_sleep(10)
     end
     print("[LUA IO] CPU Pre-Flight Complete. Holding state before triggering Shutdown...")

@@ -13,7 +13,7 @@ local bp = {
     key   = { space = 32, num1 = 49, num2 = 50, num3 = 51, esc = 256, f11 = 290, f5 = 294 },
 
     -- EXTRACTION: Added pc_size = 128 to the global config
-    cfg = { use_validation = 1, vk_api_version = 4206592, pcount = 1000000, grid_cells = 262144, pc_size = 128, frame_slots = 10, swap_slots = 10 },
+    cfg = { use_validation = 1, vk_api_version = 4206592, pcount = 1000000, grid_cells = 262144, pc_size = 128, frame_slots = 10, swap_slots = 10, swarm_states = 7 },
 
     mode = { dual = 0, geom = 1, points = 2, point_cloud_pass = 88 },
     -- [MISSING DATA ADDED BACK FOR SHADER_GEN]
@@ -355,10 +355,12 @@ bp.sequence = {
         name = "Swapchain Initialization",
         action = function(ctx, r)
             local swapchain = require("swapchain")
-            -- We feed it the runtime state and our SSoT window dimensions
-            ctx.sc_state = swapchain.Init(ctx.vk_runtime.vk, ctx.vk_runtime, r.win.w, r.win.h)
+            -- We add ctx.old_swapchain here. On first boot, it evaluates to nil (which is correct!).
+            -- On resize, we will explicitly pass the old handle in the context.
+            ctx.sc_state = swapchain.Init(ctx.vk_runtime.vk, ctx.vk_runtime, r.win.w, r.win.h, ctx.old_swapchain)
         end
     },
+
     {
         name = "Descriptors Matrix",
         action = function(ctx, r)
@@ -474,6 +476,14 @@ bp.sequence = {
             print("[WEAVER] Engine Initialization Complete. Async Overlord is LIVE.")
         end
     },
+}
+
+-- 4. THE MINI-WEAVER (For Window Resizing)
+-- We literally just reuse the exact same closures we defined above!
+bp.resize_sequence = {
+    bp.sequence[5], -- Swapchain Initialization
+    bp.sequence[8], -- Graphics Pipelines & Depth Buffer
+    bp.sequence[9]  -- Renderer Synchronization
 }
 
 return bp
