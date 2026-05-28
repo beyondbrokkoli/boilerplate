@@ -101,6 +101,7 @@ local function main()
     local desc = engine_ctx.desc_state
     local comp = engine_ctx.comp_state
     local gfx = engine_ctx.gfx_state
+    local sync = engine_ctx.sync_state -- THE LEAK FIX!
     local memory = require("memory") -- We need this to allocate our CPU RAM
 
     print("[LUA IO] Initializing CPU Data Structures...")
@@ -244,7 +245,7 @@ local function main()
                     bp.sequence[10].action(new_ctx, bp)
 
                     print("[LUA CO] Mini-Weaver Rebuild Complete.\n")
-                    
+
                     -- Update aspect ratio for projection matrix
                     aspect = sc.extent.width / math.max(1, sc.extent.height)
                     vmath.perspective_inf_revz(70.0, aspect, 0.1, proj)
@@ -255,12 +256,8 @@ local function main()
                     last_resize_time = get_time_hires() - (RESIZE_COOLDOWN * 0.9)
                 end
             end
+
         else
-            -- ... [Your existing Current Time / Input / Dispatch / Command Recording goes here] ...
-
-
-
-
 
             local current_time = get_time_hires()
             local dt = math.max(0.001, math.min(current_time - last_time, 0.033))
@@ -451,8 +448,30 @@ local function main()
                 cmd1.depth_write = points_cfg.depth_write
                 cmd1.depth_compare_op = 4
 
-                packet.draw_queue = current_queue_ptr
-                packet.draw_count = 2
+                if active_render_mode == bp.mode.dual then
+                    cmd0.first_instance = 0
+                   cmd0.instance_count = pc.particle_count
+                    cmd1.first_instance = 0
+                    cmd1.instance_count = pc.particle_count
+
+                    packet.draw_queue = current_queue_ptr
+                    packet.draw_count = 2
+
+                elseif active_render_mode == bp.mode.geom then
+                    cmd0.first_instance = 0
+                    cmd0.instance_count = pc.particle_count
+
+                    packet.draw_queue = current_queue_ptr
+                    packet.draw_count = 1
+
+                elseif active_render_mode == bp.mode.points then
+                    cmd1.first_instance = 0
+                    cmd1.instance_count = pc.particle_count
+
+                    -- Shift the C-pointer forward by 1 so the C-Core only reads cmd1
+                    packet.draw_queue = current_queue_ptr + 1
+                    packet.draw_count = 1
+                end
 
                 ffi.C.vx_stream_commit(write_idx)
 
@@ -462,13 +481,34 @@ local function main()
         end
         sys_sleep(10)
     end
-    print("[LUA IO] CPU Pre-Flight Complete. Holding state before triggering Shutdown...")
-    sys_sleep(3000)
 
-    print("[LUA IO] Triggering Shutdown...")
-    ffi.C.vx_core_shutdown()
+    print("\n[LUA IO] Render Loop Terminated. Commencing Teardown...")
 
+    -- 1. Halt the Async Overlord and Math Workers
+    print("[TEARDOWN] Terminating Async Render Thread and Worker Pool...")
+    ffi.C.vx_thread_kill()
     vmath_lib.vmath_destroy_workers()
+
+    -- 2. Wait for the GPU to finish its current queue
+    vk_rt.vk.vkDeviceWaitIdle(vk_rt.device)
+
+    -- 3. Dismantle the Data-Driven Pipelines (Reverse Order of Creation)
+    require("graphics_pipeline").Destroy(vk_rt.vk, vk_rt, gfx)
+    require("compute_pipeline").Destroy(vk_rt.vk, vk_rt, comp)
+    require("descriptors").Destroy(vk_rt.vk, vk_rt.device, desc)
+    require("swapchain").Destroy(vk_rt.vk, vk_rt, sc)
+    require("renderer").Destroy(vk_rt.vk, vk_rt.device, sync, bp.cfg.frame_slots)
+
+    -- 4. Free Memory Arenas (VRAM & CPU RAM)
+    print("[TEARDOWN] Freeing VRAM and CPU Memory Arenas...")
+    memory.DestroyBuffer("MASTER_GPU_BLOCK", vk_rt)
+    memory.DestroyBuffer("MASTER_INDEX_BLOCK", vk_rt)
+    memory.FreeSoA({"px", "py", "pz", "vx", "vy", "vz", "seed"})
+
+    -- 5. Nuke the Vulkan Instance
+    require("vulkan_core").Destroy(vk_rt)
+
+    print("[LUA IO] Teardown Complete. Safe Exit.")
 end
 
 main()
