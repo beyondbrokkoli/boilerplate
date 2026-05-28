@@ -7,6 +7,11 @@ local bp = {
     -- 1. THE VOCABULARY
     sys = { idle = 0, boot = 1, kill = 2 },
     win = { w = 1280, h = 720, min_w = 640, min_h = 360 },
+    -- Input & Bindings
+    move  = { fwd = 1, back = 2, left = 4, right = 8, up = 16, down = 32 },
+    mouse = { left = 0, right = 1 },
+    key   = { space = 32, num1 = 49, num2 = 50, num3 = 51, esc = 256, f11 = 290, f5 = 294 },
+
     -- EXTRACTION: Added pc_size = 128 to the global config
     cfg = { use_validation = 1, vk_api_version = 4206592, pcount = 1000000, grid_cells = 262144, pc_size = 128, frame_slots = 10, swap_slots = 10 },
 
@@ -267,12 +272,15 @@ local bp = {
     },
 
     compute_pipelines = {
-        { name = "clear",      file = "clear_comp.spv" },
-        { name = "hash",       file = "hash_comp.spv" },
-        { name = "scan_local", file = "scan_local_comp.spv" },
-        { name = "scan_group", file = "scan_group_comp.spv" },
-        { name = "scan_add",   file = "scan_add_comp.spv" },
-        { name = "reorder",    file = "reorder_comp.spv" }
+        -- dispatch mapping: "grid" = cells/256, "particle" = pcount/256, "groups" = NUM_GROUPS, "single" = 1
+        { name = "clear",      file = "clear_comp.spv",      dispatch = "grid",     b_src_stage = 2048, b_dst_stage = 2048, b_src_access = 64, b_dst_access = 96 },
+        { name = "hash",       file = "hash_comp.spv",       dispatch = "particle", b_src_stage = 2048, b_dst_stage = 2048, b_src_access = 64, b_dst_access = 96 },
+        { name = "scan_local", file = "scan_local_comp.spv", dispatch = "groups",   b_src_stage = 2048, b_dst_stage = 2048, b_src_access = 64, b_dst_access = 96 },
+        { name = "scan_group", file = "scan_group_comp.spv", dispatch = "single",   b_src_stage = 2048, b_dst_stage = 2048, b_src_access = 64, b_dst_access = 96 },
+        { name = "scan_add",   file = "scan_add_comp.spv",   dispatch = "groups",   b_src_stage = 2048, b_dst_stage = 2048, b_src_access = 64, b_dst_access = 96 },
+
+        -- Final pass writes to the Vertex buffer (Stage 12, Access 36)
+        { name = "reorder",    file = "reorder_comp.spv",    dispatch = "particle", b_src_stage = 2048, b_dst_stage = 12,   b_src_access = 64, b_dst_access = 36 }
     },
 
     -- We define these using the raw integers we extracted earlier,
