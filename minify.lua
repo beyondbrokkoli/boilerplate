@@ -89,6 +89,7 @@ table.insert(order, "vx_math.c")
 
 -- Optional: Add your shader files to complete the context
 table.insert(order, "registry.glsl")
+table.insert(order, "shared.glsl")
 table.insert(order, "render.vert")
 table.insert(order, "render.frag")
 table.insert(order, "hash.comp")
