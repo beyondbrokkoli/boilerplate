@@ -113,5 +113,15 @@ local function compile_engine(platform)
 end
 
 -- EXECUTION
-local target_platform = arg[1] or "linux"
+local target_platform = arg[1]
+
+if target_platform ~= "linux" and target_platform ~= "win" then
+    print("========================================")
+    print("  [FATAL] Missing or invalid target platform!")
+    print("  Usage:   luajit build.lua <linux|win>")
+    print("  Example: luajit build.lua linux")
+    print("========================================")
+    os.exit(1)
+end
+
 compile_engine(target_platform)
