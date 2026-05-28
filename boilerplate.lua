@@ -176,8 +176,11 @@ bp.sequence = {
         name = "Vulkan Instance",
         action = function(ctx, r)
             local vulkan = require("vulkan_core")
-            -- FIXED COLLISION: using vk_runtime instead of vk_state
             ctx.vk_runtime = vulkan.create_instance(r.vk_reqs.instance_ext)
+
+            -- THE MISSING LINK: Publish the instance pointer to the C-Core Mailbox!
+            ffi.cdef("void vx_sys_publish_instance(void* instance);")
+            ffi.C.vx_sys_publish_instance(ctx.vk_runtime.instance)
         end
     },
     {
@@ -191,7 +194,7 @@ bp.sequence = {
     {
         name = "Vulkan Logical Device",
         action = function(ctx, r)
-            local vulkan = require("vulkan_core_new")
+            local vulkan = require("vulkan_core") -- Fixed: removed '_new'
             local surface_ptr = ffi.C.vx_sys_get_surface()
             vulkan.finalize_device_and_swapchain(ctx.vk_runtime, surface_ptr, r.vk_reqs.device_ext)
         end
@@ -199,7 +202,7 @@ bp.sequence = {
     {
         name = "Memory Arenas Allocation",
         action = function(ctx, r)
-            local memory = require("memory_new")
+            local memory = require("memory") -- Fixed: removed '_new'
             for _, arena in ipairs(r.memory_arenas) do
                 memory.CreateHostVisibleBuffer(
                     arena.name, arena.cdef_type, arena.count, arena.usage, ctx.vk_runtime
