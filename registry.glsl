@@ -10,6 +10,7 @@ const uint MODE_POINTS = 2U;
 
 // --- ENGINE CONSTANTS ---
 const uint CFG_GRID_CELLS = 262144U;
+const uint CFG_PC_SIZE = 128U;
 const uint CFG_PCOUNT = 1000000U;
 const uint CFG_USE_VALIDATION = 1U;
 const uint CFG_VK_API_VERSION = 4206592U;

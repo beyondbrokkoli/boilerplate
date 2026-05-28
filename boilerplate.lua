@@ -1,16 +1,16 @@
--- @@@ FILE: boilerplate.lua @@@
 local ffi = require("ffi")
 local bit = require("bit")
 
--- EXPLICIT DEPENDENCY: Load Vulkan FFI types immediately so the global state knows them!
 require("vulkan_headers")
 
 local bp = {
     -- 1. THE VOCABULARY
     sys = { idle = 0, boot = 1, kill = 2 },
     win = { w = 1280, h = 720, min_w = 640, min_h = 360 },
-    cfg = { use_validation = 1, vk_api_version = 4206592, pcount = 1000000, grid_cells = 262144 },
+    -- EXTRACTION: Added pc_size = 128 to the global config
+    cfg = { use_validation = 1, vk_api_version = 4206592, pcount = 1000000, grid_cells = 262144, pc_size = 128 },
 
+    mode = { dual = 0, geom = 1, points = 2, point_cloud_pass = 88 },
     -- [MISSING DATA ADDED BACK FOR SHADER_GEN]
     mode = { dual = 0, geom = 1, points = 2, point_cloud_pass = 88 },
 
@@ -177,8 +177,6 @@ bp.sequence = {
         action = function(ctx, r)
             local vulkan = require("vulkan_core")
             ctx.vk_runtime = vulkan.create_instance(r.vk_reqs.instance_ext)
-
-            -- THE MISSING LINK: Publish the instance pointer to the C-Core Mailbox!
             ffi.cdef("void vx_sys_publish_instance(void* instance);")
             ffi.C.vx_sys_publish_instance(ctx.vk_runtime.instance)
         end
@@ -194,7 +192,7 @@ bp.sequence = {
     {
         name = "Vulkan Logical Device",
         action = function(ctx, r)
-            local vulkan = require("vulkan_core") -- Fixed: removed '_new'
+            local vulkan = require("vulkan_core")
             local surface_ptr = ffi.C.vx_sys_get_surface()
             vulkan.finalize_device_and_swapchain(ctx.vk_runtime, surface_ptr, r.vk_reqs.device_ext)
         end
@@ -202,12 +200,33 @@ bp.sequence = {
     {
         name = "Memory Arenas Allocation",
         action = function(ctx, r)
-            local memory = require("memory") -- Fixed: removed '_new'
+            local memory = require("memory")
             for _, arena in ipairs(r.memory_arenas) do
                 memory.CreateHostVisibleBuffer(
                     arena.name, arena.cdef_type, arena.count, arena.usage, ctx.vk_runtime
                 )
             end
+        end
+    },
+    -- NEW INJECTIONS: SWAPCHAIN & DESCRIPTORS
+    {
+        name = "Swapchain Initialization",
+        action = function(ctx, r)
+            local swapchain = require("swapchain")
+            -- We feed it the runtime state and our SSoT window dimensions
+            ctx.sc_state = swapchain.Init(ctx.vk_runtime.vk, ctx.vk_runtime, r.win.w, r.win.h)
+        end
+    },
+    {
+        name = "Descriptors Matrix",
+        action = function(ctx, r)
+            local descriptors = require("descriptors")
+            local memory = require("memory") -- Fetches the already-populated memory module
+
+            -- Extract the specific handle generated in Stage 4
+            local master_gpu_buffer = memory.Buffers["MASTER_GPU_BLOCK"]
+
+            ctx.desc_state = descriptors.Init(ctx.vk_runtime.vk, ctx.vk_runtime.device, master_gpu_buffer)
         end
     }
 }
