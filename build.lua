@@ -1,5 +1,16 @@
--- build_orchestrator.lua
 local VULKAN_SDK_PATH = "C:/VulkanSDK/1.4.341.1"
+
+-- Dictionary of all shaders required by the Weaver
+local shaders = {
+    { src = "render.vert",       dst = "render_vert.spv" },
+    { src = "render.frag",       dst = "render_frag.spv" },
+    { src = "clear.comp",        dst = "clear_comp.spv" },
+    { src = "hash.comp",         dst = "hash_comp.spv" },
+    { src = "scan_local.comp",   dst = "scan_local_comp.spv" },
+    { src = "scan_group.comp",   dst = "scan_group_comp.spv" },
+    { src = "scan_add.comp",     dst = "scan_add_comp.spv" },
+    { src = "reorder.comp",      dst = "reorder_comp.spv" }
+}
 
 local function copy_file(source, destination)
     local infile = io.open(source, "rb")
@@ -27,20 +38,51 @@ end
 
 local function compile_engine(platform)
     print("========================================")
-    print("   WEAVER LABORATORY ORCHESTRATOR")
+    print("   WEAVER LABORATORY BUILD AUTOMATION")
     print("   Target Platform: " .. string.upper(platform))
     print("========================================")
 
-    print("\n[0/2] Generating C Header SSoT from Boilerplate...")
+    -- [1/4] Generate the Single Source of Truth
+    print("\n[1/4] Generating C Header SSoT from Boilerplate...")
     local gen_cmd = 'luajit -e "require(\'shader_gen\').generate(\'registry.glsl\', \'shared_structs.h\')"'
-
     if not run_cmd(gen_cmd) then
         print("ERROR: Failed to generate SSoT files!")
         os.exit(1)
     end
 
+    -- [2/4] Compile GLSL Shaders to SPIR-V
+    print("\n[2/4] Compiling GLSL Shaders to SPIR-V...")
+    -- On Windows, explicitly point to the Vulkan SDK. On Linux, rely on PATH.
+    local glslc = (platform == "win") and (VULKAN_SDK_PATH .. "/Bin/glslc.exe") or "glslc"
+
+    for _, sh in ipairs(shaders) do
+        local cmd = string.format('%s %s -o %s', glslc, sh.src, sh.dst)
+        if run_cmd(cmd) then
+            print("  |- Compiled: " .. sh.dst)
+        else
+            print("  [ERROR] Failed to compile " .. sh.src)
+            os.exit(1)
+        end
+    end
+
+    -- [3/4] Compile AVX2 Math Library
+    print("\n[3/4] Compiling AVX2 Worker Pool (vx_math.c)...")
+    local math_cmd = ""
     if platform == "linux" then
-        print("\n[1/2] Compiling Laboratory Host (main.c) ...")
+        math_cmd = "gcc -shared -fPIC -O3 -march=x86-64-v3 -mavx2 -lm vx_math.c -o libvx_math.so"
+    elseif platform == "win" then
+        math_cmd = "gcc -shared -O3 -march=x86-64-v3 -mavx2 vx_math.c -o vx_math.dll"
+    end
+
+    if not run_cmd(math_cmd) then
+        print("ERROR: vx_math compilation failed!")
+        os.exit(1)
+    end
+    print("  |- Successfully compiled Math Library.")
+
+    -- [4/4] Compile Host C-Core
+    print("\n[4/4] Compiling Laboratory Host (main.c) ...")
+    if platform == "linux" then
         local linux_build_main = "gcc main.c -O3 -march=x86-64-v3 -Wl,-E -I/usr/include/luajit-2.1 -lglfw -lvulkan -lluajit-5.1 -lm -lpthread -o boot"
         if not run_cmd(linux_build_main) then
             print("ERROR: main.c compilation failed!")
@@ -48,7 +90,6 @@ local function compile_engine(platform)
         end
 
     elseif platform == "win" then
-        print("\n[1/2] Compiling Laboratory Host (main.c) ...")
         local LUA_INC = "C:/msys64/mingw64/include/luajit-2.1"
         local win_build_main = string.format(
             'gcc main.c -O3 -march=x86-64-v3 -I"%s" -I"%s/Include" -L"%s/Lib" -lws2_32 -lglfw3 -lvulkan-1 -lluajit-5.1 -lm -o boot.exe',
@@ -59,7 +100,7 @@ local function compile_engine(platform)
             os.exit(1)
         end
 
-        print("\n[2/2] Packing Windows Dependencies (DLLs)...")
+        print("\n[Packing Windows Dependencies (DLLs)...]")
         copy_file("C:/msys64/mingw64/bin/glfw3.dll", "glfw3.dll")
         copy_file("C:/msys64/mingw64/bin/lua51.dll", "lua51.dll")
         print("  |- DLLs copied successfully.")
@@ -71,8 +112,6 @@ local function compile_engine(platform)
     print("\n[SUCCESS] Laboratory build complete!\n")
 end
 
--- ==========================================================
 -- EXECUTION
--- ==========================================================
 local target_platform = arg[1] or "linux"
 compile_engine(target_platform)
