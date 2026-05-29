@@ -36,11 +36,15 @@ local function run_cmd(cmd)
     return (res == true or res == 0)
 end
 
-local function compile_engine(platform)
---    print("========================================")
+local function compile_engine(platform, build_target)
     print("   WEAVER LABORATORY BUILD AUTOMATION")
     print("   Target Platform: " .. string.upper(platform))
---    print("========================================")
+    
+    if build_target == "shaders" then
+        print("   Mode: SHADERS ONLY")
+    else
+        print("   Mode: FULL BUILD")
+    end
 
     -- [1/4] Generate the Single Source of Truth
     print("\n[1/4] Generating C Header SSoT from Boilerplate...")
@@ -63,6 +67,12 @@ local function compile_engine(platform)
             print("  [ERROR] Failed to compile " .. sh.src)
             os.exit(1)
         end
+    end
+
+    -- EARLY EXIT: If we only want shaders, stop here to avoid locking OS binaries.
+    if build_target == "shaders" then
+        print("\n[SUCCESS] Shader build complete! Ready for hot-reload.\n")
+        return
     end
 
     -- [3/4] Compile AVX2 Math Library
@@ -114,14 +124,14 @@ end
 
 -- EXECUTION
 local target_platform = arg[1]
+local build_target = arg[2]
 
 if target_platform ~= "linux" and target_platform ~= "win" then
---    print("========================================")
     print("  [FATAL] Missing or invalid target platform!")
-    print("  Usage:   luajit build.lua <linux|win>")
+    print("  Usage:   luajit build.lua <linux|win> [shaders]")
     print("  Example: luajit build.lua win")
---    print("========================================")
+    print("  Example: luajit build.lua win shaders")
     os.exit(1)
 end
 
-compile_engine(target_platform)
+compile_engine(target_platform, build_target)
