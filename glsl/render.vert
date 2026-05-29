@@ -56,17 +56,11 @@ void main() {
     if (pc.target_state != MODE_POINT_CLOUD_PASS) {
         local_pos = SHAPE_LIBRARY[gl_VertexIndex];
         vec3 scale = vec3(0.5 + h1 * 1.5, 0.5 + h2 * 3.0, 0.5 + h3 * 1.5) * 1000.0;
-        
-        // WOBBLE MODIFICATION: Pulse the scale over time, offset by the hash
-        float pulse = 1.0 + 0.8 * sin(pc.total_time * 3.0 + (h1 * 20.0));
-        scale *= max(0.1, pulse); // Prevent inverted scaling
-        
         local_pos *= scale;
 
-        // CHAOTIC ROTATION MODIFICATION: Tie the rotation directly to time
-        float rx = (h1 * 6.28) + (sin(pc.total_time * 0.5 + h2) * 4.0);
-        float ry = (h2 * 6.28) + (pc.total_time * 2.0);
-        float rz = (h3 * 6.28) + (cos(pc.total_time * 0.5 + h1) * 4.0);
+        float rx = (h1 * 6.28) + (pc.total_time * (h1 - 0.5) * 0.8);
+        float ry = (h2 * 6.28) + (pc.total_time * (h2 - 0.5) * 0.8);
+        float rz = (h3 * 6.28) + (pc.total_time * (h3 - 0.5) * 0.8);
         local_pos = rotate3D(rx, ry, rz) * local_pos;
     }
 
