@@ -85,32 +85,32 @@ local order = {
 
     -- [ C-CORE ]
     "c/main.c",
-    "c/vx_math.c",
-    "c/shared_structs.h",
+--    "c/vx_math.c",
+--    "c/shared_structs.h",
 
     -- [ LUA ENGINE MODULES ]
     "lua/boilerplate.lua",
     "lua/vulkan_core.lua",
-    "lua/vulkan_headers.lua",
+--    "lua/vulkan_headers.lua",
     "lua/swapchain.lua",
     "lua/descriptors.lua",
     "lua/graphics_pipeline.lua",
     "lua/compute_pipeline.lua",
     "lua/renderer.lua",
-    "lua/memory.lua",
-    "lua/vmath.lua",
+--    "lua/memory.lua",
+--    "lua/vmath.lua",
     "lua/registry_export.lua",
 
     -- [ GLSL SHADERS & SSOT ]
-    "glsl/registry.glsl",
-    "glsl/shared.glsl",
-    "glsl/render.vert",
-    "glsl/render.frag",
-    "glsl/hash.comp",
-    "glsl/scan_local.comp",
-    "glsl/scan_group.comp",
-    "glsl/scan_add.comp",
-    "glsl/reorder.comp"
+--    "glsl/registry.glsl",
+--    "glsl/shared.glsl",
+--    "glsl/render.vert",
+--    "glsl/render.frag",
+--    "glsl/hash.comp",
+--    "glsl/scan_local.comp",
+--    "glsl/scan_group.comp",
+--    "glsl/scan_add.comp",
+--    "glsl/reorder.comp"
 }
 
 for _, src in ipairs(order) do

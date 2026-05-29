@@ -37,10 +37,10 @@ local function run_cmd(cmd)
 end
 
 local function compile_engine(platform)
-    print("========================================")
+--    print("========================================")
     print("   WEAVER LABORATORY BUILD AUTOMATION")
     print("   Target Platform: " .. string.upper(platform))
-    print("========================================")
+--    print("========================================")
 
     -- [1/4] Generate the Single Source of Truth
     print("\n[1/4] Generating C Header SSoT from Boilerplate...")
@@ -116,11 +116,11 @@ end
 local target_platform = arg[1]
 
 if target_platform ~= "linux" and target_platform ~= "win" then
-    print("========================================")
+--    print("========================================")
     print("  [FATAL] Missing or invalid target platform!")
     print("  Usage:   luajit build.lua <linux|win>")
     print("  Example: luajit build.lua win")
-    print("========================================")
+--    print("========================================")
     os.exit(1)
 end
 

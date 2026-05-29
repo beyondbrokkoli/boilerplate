@@ -185,8 +185,12 @@ local function main()
 
     print("[LUA CO] Entering Data-Driven Render Loop...")
 
+    -- Shader Hot-Reloading
+    local gfx_pipeline_module = require("graphics_pipeline")
+    local pump_deletion_queue = gfx_pipeline_module.PumpDeletionQueue
+
     while ffi.C.vx_core_is_running() == 1 do
-        -- (Skipping the resize block for this immediate test to keep it focused)
+
         if ffi.C.vx_sys_resize_flag() == 1 then
             is_resizing = true
             last_resize_time = get_time_hires()
@@ -485,7 +489,8 @@ local function main()
 
                 ffi.C.vx_stream_commit(write_idx)
 
-                require("graphics_pipeline").PumpDeletionQueue(vk_rt.vk, vk_rt, frame_count)
+                pump_deletion_queue(vk_rt.vk, vk_rt, frame_count)
+
                 frame_count = frame_count + 1
             end -- End of if write_idx ~= -1
         end
