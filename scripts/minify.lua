@@ -73,30 +73,45 @@ local function get_sorted_files()
     return sorted
 end
 
--- ==========================================================
--- EXECUTION
--- ==========================================================
+-- EXECUTION & MANUAL FILE SELECTION MATRIX
+-- Comment out (--) any file you DO NOT want included in the snapshot.
 
 print("--- AI SNAPSHOT ---")
-local order = get_sorted_files()
 
--- Explicitly add non-Lua components and the build system
-table.insert(order, "build.lua")
-table.insert(order, "lua/registry_export.lua")
-table.insert(order, "c/shared_structs.h")
-table.insert(order, "c/main.c")
-table.insert(order, "c/vx_math.c")
+local order = {
+    -- [ ENTRY POINTS ]
+    "main.lua",
+    "build.lua",
 
--- Optional: Add your shader files to complete the context
-table.insert(order, "glsl/registry.glsl")
-table.insert(order, "glsl/shared.glsl")
-table.insert(order, "glsl/render.vert")
-table.insert(order, "glsl/render.frag")
-table.insert(order, "glsl/hash.comp")
-table.insert(order, "glsl/scan_local.comp")
-table.insert(order, "glsl/scan_group.comp")
-table.insert(order, "glsl/scan_add.comp")
-table.insert(order, "glsl/reorder.comp")
+    -- [ C-CORE ]
+    "c/main.c",
+    "c/vx_math.c",
+    "c/shared_structs.h",
+
+    -- [ LUA ENGINE MODULES ]
+    "lua/boilerplate.lua",
+    "lua/vulkan_core.lua",
+    "lua/vulkan_headers.lua",
+    "lua/swapchain.lua",
+    "lua/descriptors.lua",
+    "lua/graphics_pipeline.lua",
+    "lua/compute_pipeline.lua",
+    "lua/renderer.lua",
+    "lua/memory.lua",
+    "lua/vmath.lua",
+    "lua/registry_export.lua",
+
+    -- [ GLSL SHADERS & SSOT ]
+    "glsl/registry.glsl",
+    "glsl/shared.glsl",
+    "glsl/render.vert",
+    "glsl/render.frag",
+    "glsl/hash.comp",
+    "glsl/scan_local.comp",
+    "glsl/scan_group.comp",
+    "glsl/scan_add.comp",
+    "glsl/reorder.comp"
+}
 
 for _, src in ipairs(order) do
     local f = io.open(src, "r")
