@@ -1,6 +1,22 @@
-Running on linux --> sudo pacman -S luajit
+## Playing on Linux 
 
-Building on linux --> sudo pacman -S vulkan-headers
+```
+sudo pacman -S luajit
+git clone https://github.com/beyondbrokkoli/boilerplate
+cd boilerplate
+bin/boot
+```
+
+
+## Building on Linux
+
+```
+sudo pacman -S luajit
+sudo pacman -S vulkan-headers
+git clone https://github.com/beyondbrokkoli/boilerplate
+cd boilerplate
+lua build.lua linux
+```
 
 # Weaver Laboratory
 
