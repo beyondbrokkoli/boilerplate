@@ -63,46 +63,46 @@ lua build.lua linux
 
 ```
 weaver-laboratory/
-├── main.lua                 # [ENTRY] LuaJIT bootstrapper: coroutine-driven engine sequence
-├── build.lua                # [BUILD] Cross-platform build automation: SSoT gen → GLSL → AVX2 → host
-├── run.bat / run.sh         # [WRAPPER] Platform-specific launch scripts (not shown, implied)
+├── main.lua                  # [ENTRY] LuaJIT bootstrapper: coroutine-driven engine sequence
+├── build.lua                 # [BUILD] Cross-platform build automation: SSoT gen → GLSL → AVX2 → host
+├── start.bat / start.sh      # [WRAPPER] Platform-specific launch scripts (not shown, implied)
 │
-├── c/                       # [C-CORE] Low-latency worker pool & Vulkan host bridge
-│   ├── main.c               # GLFW window management, atomic IPC mailbox, async render thread
-│   ├── vx_math.c            # AVX2-optimized particle swarm dispatch (compiled by build.lua)
-│   └── shared_structs.h     # [AUTO-GEN] SSoT header: PushConstants, SwarmCommand, RenderPacket
+├── c/                        # [C-CORE] Low-latency worker pool & Vulkan host bridge
+│   ├── main.c                # GLFW window management, atomic IPC mailbox, async render thread
+│   ├── vx_math.c             # AVX2-optimized particle swarm dispatch (compiled by build.lua)
+│   └── shared_structs.h      # [AUTO-GEN] SSoT header: PushConstants, SwarmCommand, RenderPacket
 │
-├── glsl/                    # [SHADERS] SPIR-V source with build-time constant injection
-│   ├── registry.glsl        # [AUTO-GEN] SSoT constants: CFG_*, MODE_* enums
-│   ├── shared.glsl          # Common GLSL utilities: get_cell_id(), push_constant layout
-│   ├── render.vert          # Geometry/point-cloud vertex shader (instanced, push-constant driven)
-│   ├── render.frag          # Fragment shader with color blending & depth testing
-│   ├── clear.comp           # Compute: Grid cell counter reset
-│   ├── hash.comp            # Compute: Spatial hash assignment per particle
-│   ├── scan_local.comp      # Compute: Parallel prefix sum (local group)
-│   ├── scan_group.comp      # Compute: Parallel prefix sum (group offsets)
-│   ├── scan_add.comp        # Compute: Final offset resolution
-│   └── reorder.comp         # Compute: Particle reorder by spatial hash
+├── glsl/                     # [SHADERS] SPIR-V source with build-time constant injection
+│   ├── registry.glsl         # [AUTO-GEN] SSoT constants: CFG_*, MODE_* enums
+│   ├── shared.glsl           # Common GLSL utilities: get_cell_id(), push_constant layout
+│   ├── render.vert           # Geometry/point-cloud vertex shader (instanced, push-constant driven)
+│   ├── render.frag           # Fragment shader with color blending & depth testing
+│   ├── clear.comp            # Compute: Grid cell counter reset
+│   ├── hash.comp             # Compute: Spatial hash assignment per particle
+│   ├── scan_local.comp       # Compute: Parallel prefix sum (local group)
+│   ├── scan_group.comp       # Compute: Parallel prefix sum (group offsets)
+│   ├── scan_add.comp         # Compute: Final offset resolution
+│   └── reorder.comp          # Compute: Particle reorder by spatial hash
 │
-├── lua/                     # [CONTROL PLANE] LuaJIT modules driving Vulkan via FFI
-│   ├── boilerplate.lua      # Central config: vk_struct enums, pipeline configs, boot sequences
-│   ├── vulkan_core.lua      # Instance/device creation, validation layer injection, surface handling
-│   ├── swapchain.lua        # Swapchain recreation with extent clamping & oldSwapchain chaining
-│   ├── descriptors.lua      # Unified SSBO descriptor set + push constant range layout
-│   ├── graphics_pipeline.lua# Dynamic-state graphics pipelines + hot-reload with deferred destruction
-│   ├── compute_pipeline.lua # Compute pipeline compilation with barrier metadata
-│   ├── renderer.lua         # Sync primitive factory: semaphores, fences, in-flight tracking
-│   ├── memory.lua           # ReBAR-aware buffer allocation, SoA CPU array management, alignment checks
-│   ├── vmath.lua            # Matrix math utilities: perspective_inf_revz, lookAt, multiply_mat4
-│   └── registry_export.lua  # SSoT generator: emits c/shared_structs.h + glsl/registry.glsl
+├── lua/                      # [CONTROL PLANE] LuaJIT modules driving Vulkan via FFI
+│   ├── boilerplate.lua       # Central config: vk_struct enums, pipeline configs, boot sequences
+│   ├── vulkan_core.lua       # Instance/device creation, validation layer injection, surface handling
+│   ├── swapchain.lua         # Swapchain recreation with extent clamping & oldSwapchain chaining
+│   ├── descriptors.lua       # Unified SSBO descriptor set + push constant range layout
+│   ├── graphics_pipeline.lua # Dynamic-state graphics pipelines + hot-reload with deferred destruction
+│   ├── compute_pipeline.lua  # Compute pipeline compilation with barrier metadata
+│   ├── renderer.lua          # Sync primitive factory: semaphores, fences, in-flight tracking
+│   ├── memory.lua            # ReBAR-aware buffer allocation, SoA CPU array management, alignment checks
+│   ├── vmath.lua             # Matrix math utilities: perspective_inf_revz, lookAt, multiply_mat4
+│   └── registry_export.lua   # SSoT generator: emits c/shared_structs.h + glsl/registry.glsl
 │
-└── bin/                     # [QUARANTINE ZONE] Compiled artifacts only
-    ├── boot.exe / boot      # [OUTPUT] Host executable (C-core + LuaJIT embedded)
+└── bin/                      # [QUARANTINE ZONE] Compiled artifacts only
+    ├── boot.exe / boot       # [OUTPUT] Host executable (C-core + LuaJIT embedded)
     ├── vx_math.dll / libvx_math.so  # [OUTPUT] AVX2 math worker pool (C-shared lib)
-    ├── *_vert.spv           # [OUTPUT] Compiled vertex shaders (SPIR-V)
-    ├── *_frag.spv           # [OUTPUT] Compiled fragment shaders
-    ├── *_comp.spv           # [OUTPUT] Compiled compute shaders
-    └── *.dll                # [DEPS] Runtime dependencies (glfw3, lua51, vulkan-1)
+    ├── *_vert.spv            # [OUTPUT] Compiled vertex shaders (SPIR-V)
+    ├── *_frag.spv            # [OUTPUT] Compiled fragment shaders
+    ├── *_comp.spv            # [OUTPUT] Compiled compute shaders
+    └── *.dll                 # [DEPS] Runtime dependencies (glfw3, lua51, vulkan-1)
 ```
 
 ### Domain Isolation Principles
