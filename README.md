@@ -1,3 +1,6 @@
+Running on linux --> sudo pacman -S luajit
+Building on linux --> sudo pacman -S vulkan-headers
+
 # Weaver Laboratory
 
 > **A high-performance, data-driven graphics and particle engine.**  
